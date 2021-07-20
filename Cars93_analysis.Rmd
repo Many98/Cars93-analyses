@@ -1,0 +1,176 @@
+---
+title: "Fuel economy analysis"
+author: "Emanuel Frátrik"
+date: "19.7.2021"
+output: 
+  pdf_document:
+    number_sections: true
+    fig_caption: yes
+  tables: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+source("posthocTGH.R")
+library(tidyverse)
+library(ggridges)
+library(patchwork)
+library(kableExtra)
+library(ggpubr)
+library(car)
+library(MASS)
+library(stats)
+data(Cars93)
+data <- subset(Cars93, select=c(DriveTrain, MPG.highway))
+```
+# Introduction
+
+In this report we will perform analysis to find out whether highway MPG (miles per gallon)  is same for all three types of drive-train, namely rear, front and four wheels drive-train denoted as 4WD. In other words we will analyze fuel economy of cars in highways with mentioned three types of drive-train. For this analysis we use Cars93 dataset. 
+
+# Analysis and results
+
+### Descriptive data analysis
+
+Whole dataset contains 93 observations (rows) with 27 descriptive variables. 
+For purposes of our analysis we have chosen only two variables from dataset, namely DriveTrain and MPG.highway. In table \ref{tab:desc} we can see summary statistics of highway MPG (MPG.highway) per group of drive-train (DriveTrain) type. We need to point out that sample sizes in each group are sharply unequal. In figure \ref{fig:box} we can see boxplot according to three types of drive-train showing central tendency and variability in these three groups of drive-train.
+
+```{r desc, results='asis'}
+# descriptive stats per group of drive-train
+
+descriptive.stats <- data %>% 
+                     group_by(DriveTrain) %>% 
+                     summarise(mean = round(mean(MPG.highway, na.rm = T), 3), 
+                               variance = round(var(MPG.highway, na.rm = T), 4),
+                               median = round(median(MPG.highway, na.rm = T), 4),
+                               "sample size" = sum(!is.na(MPG.highway)))
+
+options(knitr.kable.NA = '') # suppress showing NA values in table
+kable(descriptive.stats, format = "latex", 
+      caption = "Summary statistics for highway MPG per drive-train groups", 
+      align = "rrrrr") %>%
+  kable_styling(position = "center")
+```
+
+
+```{r,  label="box", fig.width=3.5,fig.height=3.6, fig.cap="\\label{fig:box}Boxplot of each group of drive-train"}
+
+boxplot <- ggboxplot(data, x = "DriveTrain", y = "MPG.highway",
+              color = "DriveTrain", palette =c("#00AFBB", "#E7B800", "#FC4E07"),
+              add = "jitter", shape = "DriveTrain")
+boxplot <- ggpar(boxplot, legend = "none")
+
+boxplot 
+
+
+```
+
+
+```{r, lab="qq", fig.width=7,fig.height=3.5, fig.cap="\\label{fig:qq}Normal Q-Q plot (left) and density plot (right) of highway MPG per group of drive-train "}
+
+
+qq <- ggqqplot(data, x = "MPG.highway", title="", 
+        color = "DriveTrain", 
+        palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+        ggtheme = theme_pubclean())
+qq <- ggpar(qq, legend = "none")
+
+dplot <- ggplot(data, aes(x = MPG.highway, y = DriveTrain)) +
+         geom_density_ridges(aes(fill = DriveTrain), bandwidth=2.08) +
+         scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+#hplot <- ggplot(data, aes(x = MPG.highway, y = DriveTrain)) +
+#         geom_density_ridges2(aes(fill = DriveTrain), stat = "binline", binwidth = 6) +
+#         scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+qq + dplot
+
+
+```
+
+
+### Inferential analysis
+As we mentioned in introduction our goal is to perform Fisher's one-way ANOVA to find out whether highway MPG is equal according to type of drive-train used in vehicles. Our null hypothesis is therefore 
+$$ H_0: \mu_{front} = \mu_{rear} = \mu_{4WD}  $$
+$$ H_1: otherwise $$
+First of all we performed tests to check whether the assumptions of ANOVA were met.We assume that independence of observations was ensured by experiment setting.
+Homogeneity of variances between groups can be checked visually in boxplot in figure \ref{fig:box}. According to this boxplots it seems that observations may have different variance among groups. We also tested this assumption using Leven's test (see table \ref{tab:variance}) with significant result with p-value of 0.025 and therefore we rejected hypothesis about homogeneity of variances between groups. Normality of observations in each group can be also checked by looking at q-q plot or density plot. Both plots are showed in figure \ref{fig:qq}. According to this plots it seems that  assumption about normality of data in groups is deviated a bit. Although Shapiro-Wilk's normality test gives significant results with p-value of 0.0002 (see table \ref{tab:normality}) for group "Front" we still did not consider this as severe violation of normality assumption and therefore we proceeded with Welch's ANOVA instead of Fisher's ANOVA which does not assume same variances among groups.
+
+Summarized results of Welch's ANOVA can be seen in table \ref{tab:ANOVA}. As Welch's test gives significant results we reject null hypothesis about equal means and continue with Games-Howell's test to find out which groups are different from each other significantly. Games-Howell's test was used instead of Tukey's HSD method because it does not assume same variances and sample sizes between groups. As we can see in table \ref{tab:posthoc} significant results occurred in pair of Rear and Front drive-train type with p-value almost equal to zero.
+
+
+```{r variance, results='asis'}
+# Leven's test of homogenity of variances
+variance.check <- data %>%
+                  summarise("Df" = leveneTest(MPG.highway ~ DriveTrain, center='mean')$"Df",
+                            "F statistic" = leveneTest(MPG.highway ~ DriveTrain, center='mean')$"F value",
+                            "p-value" = leveneTest(MPG.highway ~ DriveTrain, center='mean')$"Pr(>F)")
+                  
+
+options(knitr.kable.NA = '') 
+kable(variance.check, format = "latex",  
+      caption = "Results of Leven's test of homogeneity of variances based on mean",
+      digits = c(3, 3, 4, 2, 3), align = "rrrrr") %>%
+  kable_styling(position = "center")
+```
+
+```{r normality, results='asis'}
+# Shapiro-Wilks test of normality of groups of observations
+normality.check <- data %>%
+                   group_by(DriveTrain) %>%
+                   summarise(statistic = shapiro.test(MPG.highway)$statistic,
+                             "p-value" = shapiro.test(MPG.highway)$p.value)
+
+options(knitr.kable.NA = '') 
+kable(normality.check, format = "latex",  
+      caption = "Results of Shapiro-Wilk's test of normality within groups",
+      digits = c(3, 3, 4, 2, 3), align = "rrrrr") %>%
+  kable_styling(position = "center")
+```
+
+```{r ANOVA, results='asis'}
+# Welch's ANOVA 
+anova <- data %>%
+         summarise("Df" = c(2, 90),
+                   "F statistic" = c(oneway.test(MPG.highway ~ DriveTrain, var.equal = FALSE)$statistic, NA),
+                   "p-value" = c(oneway.test(MPG.highway ~ DriveTrain, var.equal = FALSE)$p.value, NA))
+                   
+
+options(knitr.kable.NA = '') 
+kable(anova, format = "latex",  
+      caption = "Results of Welch's ANOVA",
+      digits = c(3, 3, 4, 2, 3), align = "rrrrr") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+```
+
+```{r posthoc, results='asis'}
+# Post-hoc Games-Howell test which does not assume equal variances and sample sizes in groups
+
+posthoc <- data %>% 
+           summarise("group pair" = c("Front-4WD", "Rear-4WD", "Rear-Front"),
+                     posthocTGH(y=MPG.highway, x=DriveTrain, method="games-howell")$output$games.howell)
+
+options(knitr.kable.NA = '')
+kable(posthoc, format = "latex",  
+      caption = "Results of Games-Howell's post-hoc test",
+      digits = c(3, 3, 4, 4, 4, 3, 6), align = "rrrrr") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+```
+
+# Conclusion
+
+According to performed ANOVA we can conclude that highway MPG significantly differs among groups of cars with three types of drive-train with p-value of 0.0005. Games-Howell's test then showed significant difference in highway MPG only between groups Rear and Front with p-value almost equal to zero. Also we can conclude that  cars with front drive-train  have lower fuel economy in highways in comparison to cars with rear drive-train.
+```{=latex}
+\begin{center}
+\begin{tabular}{ccc}
+ Rear & 4WD & Front \\
+ 26.31 & 25.82 & 30.24 
+\end{tabular}
+\end{center}
+```
+```{=latex}
+\hspace{6.5cm} \noindent\rule{2.1cm}{0.4pt} 
+
+\hspace{7.8cm} \noindent\rule{2.1cm}{0.4pt} 
+
+
+```
