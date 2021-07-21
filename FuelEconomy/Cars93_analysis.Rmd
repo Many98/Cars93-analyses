@@ -32,7 +32,7 @@ data3 <- subset(Cars93, select=c(Origin, AirBags))
 ```
 # Introduction
 
-In this report we will analyze fuel economy of cars in highways with three types of drive-train, namely rear, front and four wheels drive-train denoted as 4WD. Then we will compare prices of cars according to its origin. And finally we will look at relation between airbags type and origin of cars. For all free performed analyses we have used Cars93 dataset. 
+In this report we will analyze fuel economy of cars in highways with three types of drive-train, namely rear, front and four wheels drive-train denoted as 4WD. Then we will compare prices of cars according to its origin. And finally we will look at relation between airbags type and origin of cars. For all three performed analyses we have used Cars93 dataset. 
 
 # Analysis and results
 
