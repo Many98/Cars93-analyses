@@ -1,7 +1,7 @@
 ---
-title: "Fuel economy analysis"
+title: "Cars93 dataset analysis"
 author: "Emanuel Frátrik"
-date: "19.7.2021"
+date: "20.7.2021"
 output: 
   pdf_document:
     number_sections: true
@@ -11,6 +11,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
+options(warn=-1)
 source("posthocTGH.R")
 library(tidyverse)
 library(ggridges)
@@ -20,22 +21,33 @@ library(ggpubr)
 library(car)
 library(MASS)
 library(stats)
+library(FSA)
+library(asympTest)
+library(janitor)
+library(gtsummary)
 data(Cars93)
 data <- subset(Cars93, select=c(DriveTrain, MPG.highway))
+data2 <- subset(Cars93, select=c(Origin, Price))
+data3 <- subset(Cars93, select=c(Origin, AirBags))
 ```
 # Introduction
 
-In this report we will perform analysis to find out whether highway MPG (miles per gallon)  is same for all three types of drive-train, namely rear, front and four wheels drive-train denoted as 4WD. In other words we will analyze fuel economy of cars in highways with mentioned three types of drive-train. For this analysis we use Cars93 dataset. 
+In this report we will analyze fuel economy of cars in highways with three types of drive-train, namely rear, front and four wheels drive-train denoted as 4WD. Then we will compare prices of cars according to its origin. And finally we will look at relation between airbags type and origin of cars. For all free performed analyses we have used Cars93 dataset. 
 
 # Analysis and results
 
-### Descriptive data analysis
+## Descriptive data analysis
 
-Whole dataset contains 93 observations (rows) with 27 descriptive variables. 
-For purposes of our analysis we have chosen only two variables from dataset, namely DriveTrain and MPG.highway. In table \ref{tab:desc} we can see summary statistics of highway MPG (MPG.highway) per group of drive-train (DriveTrain) type. We need to point out that sample sizes in each group are sharply unequal. In figure \ref{fig:box} we can see boxplot according to three types of drive-train showing central tendency and variability in these three groups of drive-train.
+Whole dataset contains 93 observations (rows) with 27 descriptive variables (columns). 
+For purposes of our analysis we have chosen only five variables from dataset, namely DriveTrain, MPG.highway, Origin, Airbags and Price. Price in this case is meant as average of minimal base price of car and its maximal possible price. In table \ref{tab:desc} we can see summary statistics of highway MPG (MPG.highway) per group of drive-train (DriveTrain) type. We need to point out that sample sizes in each group are sharply unequal. In figure \ref{fig:box} we can see boxplot according to three types of drive-train showing central tendency and variability in these three groups of drive-train.
+
+Similar plot is showed in  figure \ref{fig:box2} for prices (Price) of cars according to their origin (Origin). And also descriptive statistics of prices can be seen in table \ref{tab:desc2}. In case of prices we see that there is almost equal sample size in two groups according to origin of car. It seems that mean price for USA and non-USA cars is very similar but different in variance. 
+
+In table \ref{tab:desc3} one can see frequency statistics of categorical variables Origin and AirBags. There we can see that most of cars has driver only airbags but the second largest group of cars are those without airbags.
+
 
 ```{r desc, results='asis'}
-# descriptive stats per group of drive-train
+# descriptive stats of MPG per group of drive-train
 
 descriptive.stats <- data %>% 
                      group_by(DriveTrain) %>% 
@@ -51,12 +63,39 @@ kable(descriptive.stats, format = "latex",
   kable_styling(position = "center")
 ```
 
+```{r desc2, results='asis'}
+
+# descriptive stats of price according to its origin (usa/ non-usa)
+descriptive.stats2 <- data2 %>% 
+                      group_by(Origin) %>% 
+                      summarise(mean = round(mean(Price, na.rm = T), 3), 
+                                variance = round(var(Price, na.rm = T), 4),
+                                median = round(median(Price, na.rm = T), 4),
+                                "sample size" = sum(!is.na(Price)))
+
+options(knitr.kable.NA = '') 
+kable(descriptive.stats2, format = "latex", 
+      caption = "Summary statistics for price of cars according to its origin", 
+      align = "rrrrr") %>%
+  kable_styling(position = "center")
+```
+
+```{r desc3, results='asis', message = FALSE}
+
+descriptive.stats3 <- data3 %>% tbl_summary() %>% 
+    as_kable_extra(caption = "Summary statistics for Airbags vs Origin data") %>% kable_styling(position = "center")
+
+
+
+descriptive.stats3
+```
+
 
 ```{r,  label="box", fig.width=3.5,fig.height=3.6, fig.cap="\\label{fig:box}Boxplot of each group of drive-train"}
 
 boxplot <- ggboxplot(data, x = "DriveTrain", y = "MPG.highway",
-              color = "DriveTrain", palette =c("#00AFBB", "#E7B800", "#FC4E07"),
-              add = "jitter", shape = "DriveTrain")
+                      color = "DriveTrain", palette =c("#00AFBB", "#E7B800", "#FC4E07"),
+                      add = "jitter", shape = "DriveTrain")
 boxplot <- ggpar(boxplot, legend = "none")
 
 boxplot 
@@ -69,14 +108,14 @@ boxplot
 
 
 qq <- ggqqplot(data, x = "MPG.highway", title="", 
-        color = "DriveTrain", 
-        palette = c("#00AFBB", "#E7B800", "#FC4E07"),
-        ggtheme = theme_pubclean())
+               color = "DriveTrain", 
+               palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+               ggtheme = theme_pubclean())
 qq <- ggpar(qq, legend = "none")
 
 dplot <- ggplot(data, aes(x = MPG.highway, y = DriveTrain)) +
-         geom_density_ridges(aes(fill = DriveTrain), bandwidth=2.08) +
-         scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07"))
+                 geom_density_ridges(aes(fill = DriveTrain), bandwidth=2.08) +
+                 scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07"))
 
 #hplot <- ggplot(data, aes(x = MPG.highway, y = DriveTrain)) +
 #         geom_density_ridges2(aes(fill = DriveTrain), stat = "binline", binwidth = 6) +
@@ -87,19 +126,54 @@ qq + dplot
 
 ```
 
+```{r,  label="box2", fig.width=3.5,fig.height=3.6, fig.cap="\\label{fig:box2}Boxplot of prices of cars according to its origin"}
 
-### Inferential analysis
-As we mentioned in introduction our goal is to perform Fisher's one-way ANOVA to find out whether highway MPG is equal according to type of drive-train used in vehicles. Our null hypothesis is therefore 
+boxplot2 <- ggboxplot(data2, x = "Origin", y = "Price",
+                      color = "Origin", palette =c("#59A714", "#9600D4"),
+                      add = "jitter", shape = "Origin")
+boxplot2 <- ggpar(boxplot2, legend = "none")
+
+boxplot2 
+
+
+```
+
+
+```{r, lab="qq2", fig.width=7,fig.height=3.5, fig.cap="\\label{fig:qq2}Normal Q-Q plot (left) and density plot (right) of prices of cars according to its origin"}
+
+
+qq2 <- ggqqplot(data2, x = "Price", title="", 
+                color = "Origin", 
+                palette = c("#59A714", "#9600D4"),
+                ggtheme = theme_pubclean())
+qq2 <- ggpar(qq2, legend = "none")
+
+dplot2 <- ggplot(data2, aes(x = Price, y = Origin)) +
+                 geom_density_ridges(aes(fill = Origin), bandwidth=2.08) +
+                 scale_fill_manual(values = c("#59A714", "#9600D4"))
+
+
+qq2 + dplot2
+
+
+```
+
+
+## Inferential analysis
+
+### Analysis of fuel economy
+
+As we mentioned in introduction our goal is to analyze fuel economy of cars in highway according to used drive-train. We want therefore perform Fisher's one-way ANOVA to find out whether highway MPG is equal according to type of drive-train used in vehicles. Our null hypothesis looks like
 $$ H_0: \mu_{front} = \mu_{rear} = \mu_{4WD}  $$
 $$ H_1: otherwise $$
-First of all we performed tests to check whether the assumptions of ANOVA were met.We assume that independence of observations was ensured by experiment setting.
-Homogeneity of variances between groups can be checked visually in boxplot in figure \ref{fig:box}. According to this boxplots it seems that observations may have different variance among groups. We also tested this assumption using Leven's test (see table \ref{tab:variance}) with significant result with p-value of 0.025 and therefore we rejected hypothesis about homogeneity of variances between groups. Normality of observations in each group can be also checked by looking at q-q plot or density plot. Both plots are showed in figure \ref{fig:qq}. According to this plots it seems that  assumption about normality of data in groups is deviated a bit. Although Shapiro-Wilk's normality test gives significant results with p-value of 0.0002 (see table \ref{tab:normality}) for group "Front" we still did not consider this as severe violation of normality assumption and therefore we proceeded with Welch's ANOVA instead of Fisher's ANOVA which does not assume same variances among groups.
-
+First of all we performed tests to check whether the assumptions of ANOVA were met. We assume that independence of observations was ensured by experiment setting.
+Homogeneity of variances between groups can be checked visually in boxplot in figure \ref{fig:box}. According to this boxplots it seems that observations may have different variance among groups. We also tested this assumption using Leven's test (see table \ref{tab:variance}) with significant result with p-value of 0.025 and therefore we rejected null hypothesis about homogeneity of variances between groups. Normality of observations in each group can be also checked by looking at q-q plot or density plot. Both plots are showed in figure \ref{fig:qq}. According to this plots it seems that  assumption about normality of data in groups is deviated a bit. Although Shapiro-Wilk's normality test gives significant results with p-value of 0.0002 (see table \ref{tab:normality}) for group "Front" we still did not consider this as severe violation of normality assumption and therefore we proceeded with Welch's ANOVA instead of Fisher's ANOVA which does not assume same variances among groups.
 Summarized results of Welch's ANOVA can be seen in table \ref{tab:ANOVA}. As Welch's test gives significant results we reject null hypothesis about equal means and continue with Games-Howell's test to find out which groups are different from each other significantly. Games-Howell's test was used instead of Tukey's HSD method because it does not assume same variances and sample sizes between groups. As we can see in table \ref{tab:posthoc} significant results occurred in pair of Rear and Front drive-train type with p-value almost equal to zero.
+Finally we performed also non-parametric Kruskal-Wallis test which also turned out to be significant with p-value of 0.0015 (see table \ref{tab:kruskal}). Dunn's test was chosen as optimal for post-hoc test which resulted in slightly different results in comparison to Games-Howell's test. Dunn's test showed significant difference in pair of 4WD and Front drive-train type with p-value of 0.0122 in addition to Games-Howell§s test.(see table \ref{tab:posthoc2}).  
 
 
 ```{r variance, results='asis'}
-# Leven's test of homogenity of variances
+# Leven's test of homogenity of variances between groups of drive-train
 variance.check <- data %>%
                   summarise("Df" = leveneTest(MPG.highway ~ DriveTrain, center='mean')$"Df",
                             "F statistic" = leveneTest(MPG.highway ~ DriveTrain, center='mean')$"F value",
@@ -108,13 +182,13 @@ variance.check <- data %>%
 
 options(knitr.kable.NA = '') 
 kable(variance.check, format = "latex",  
-      caption = "Results of Leven's test of homogeneity of variances based on mean",
+      caption = "Results of Leven's test of homogeneity of variances based on mean for highway MPG",
       digits = c(3, 3, 4, 2, 3), align = "rrrrr") %>%
   kable_styling(position = "center")
 ```
 
 ```{r normality, results='asis'}
-# Shapiro-Wilks test of normality of groups of observations
+# Shapiro-Wilks test of normality of groups of observations according to drive-train
 normality.check <- data %>%
                    group_by(DriveTrain) %>%
                    summarise(statistic = shapiro.test(MPG.highway)$statistic,
@@ -122,7 +196,7 @@ normality.check <- data %>%
 
 options(knitr.kable.NA = '') 
 kable(normality.check, format = "latex",  
-      caption = "Results of Shapiro-Wilk's test of normality within groups",
+      caption = "Results of Shapiro-Wilk's test of normality within groups of drive-train",
       digits = c(3, 3, 4, 2, 3), align = "rrrrr") %>%
   kable_styling(position = "center")
 ```
@@ -146,7 +220,7 @@ kable(anova, format = "latex",
 # Post-hoc Games-Howell test which does not assume equal variances and sample sizes in groups
 
 posthoc <- data %>% 
-           summarise("group pair" = c("Front-4WD", "Rear-4WD", "Rear-Front"),
+           summarise("comparison" = c("Front-4WD", "Rear-4WD", "Rear-Front"),
                      posthocTGH(y=MPG.highway, x=DriveTrain, method="games-howell")$output$games.howell)
 
 options(knitr.kable.NA = '')
@@ -156,21 +230,148 @@ kable(posthoc, format = "latex",
   kable_styling(position = "center", latex_options = "hold_position")
 ```
 
+```{r kruskal, results='asis'}
+# Kruskal-Wallis test
+kruskal <- data %>%
+         summarise("Df" = c(2, 90),
+                   "F statistic" = c(kruskal.test(MPG.highway ~ DriveTrain)$statistic, NA),
+                   "p-value" = c(kruskal.test(MPG.highway ~ DriveTrain)$p.value, NA))
+                   
+
+options(knitr.kable.NA = '') 
+kable(kruskal, format = "latex",  
+      caption = "Results of non-parametric Kruskal-Walis test",
+      digits = c(3, 3, 4, 2, 3), align = "rrrrr") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+```
+
+```{r posthoc2, results='asis'}
+# Post-hoc Dunn's test 
+
+posthoc2 <- data %>% 
+            summarise(comparison = dunnTest(MPG.highway ~ DriveTrain)$res$Comparison,
+                      "Z statistic" = dunnTest(MPG.highway ~ DriveTrain)$res$Z,
+                      "p-value" = dunnTest(MPG.highway ~ DriveTrain)$res$P.unadj)
+
+options(knitr.kable.NA = '')
+kable(posthoc2, format = "latex",  
+      caption = "Results of Dunn's post-hoc test",
+      digits = c(3, 3, 4, 4, 4, 3, 6), align = "rrrrr") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+```
+
+### Analysis of price of cars
+
+In this section we have analyzed prices of cars according to their origin (USA, non-USA). Optimal test to be chosen to compare prices would be two samples t-test or Welch's test. We have therefore firstly analyzed variances of prices. From boxplot in figure \ref{fig:box2} it seems that variances of both groups may be different. Leven's test was used to test hypothesis about homogeneity of variances of prices with significant result with p-value of 0.0425 (see table \ref{tab:variance2}).
+After this finding we proceeded with analysis of normality visually in q-q and density plots (see figure \ref{fig:qq2}) and then we performed Shapiro-Wilk's test. According to this test the hypothesis about normality of samples was rejected with p-values equal almost to zero (see table \ref{tab:normality2}). As we cannot use t-test we have chosen non-parametric Kolmogorov-Smirnov two samples test and asymptotic test of means to test following hypotheses with significance level of 0.05
+$$ H_0: distribution_{USA} = distribution_{non-USA}  $$
+and 
+$$ H_0: \mu_{USA} = \mu_{non-USA}  $$
+$$ H_1: otherwise $$
+Both tests given non-significant results with p-values of 0.517 for Kolmogorov-Smirnov test and 0.34 for asymptotic test also with wide confidence interval (see tables \ref{tab:ks} and \ref{tab:asymp}).
+
+
+
+```{r variance2, results='asis'}
+# Leven's test of homogenity of variances
+variance.check2 <- data2 %>%
+                   summarise("Df" = leveneTest(Price ~ Origin, center='mean')$"Df",
+                            "F statistic" = leveneTest(Price ~ Origin, center='mean')$"F value",
+                            "p-value" = leveneTest(Price ~ Origin, center='mean')$"Pr(>F)")
+                  
+
+options(knitr.kable.NA = '') 
+kable(variance.check2, format = "latex",  
+      caption = "Results of Leven's test of homogeneity of variances based on mean for prices according to origin of cars",
+      digits = c(3, 3, 4, 2, 3), align = "rrrrr") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+```
+
+```{r normality2, results='asis'}
+# Shapiro-Wilks test of normality of price according to origin of cars
+normality.check2 <- data2 %>%
+                    group_by(Origin) %>%
+                    summarise(statistic = shapiro.test(Price)$statistic,
+                             "p-value" = shapiro.test(Price)$p.value)
+
+options(knitr.kable.NA = '') 
+kable(normality.check2, format = "latex",  
+      caption = "Results of Shapiro-Wilk's test of normality of prices according to origin of cars",
+      digits = c(3, 3, 4, 2, 3), align = "rrrrr") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+```
+
+```{r ks, results='asis'}
+ks <- data2 %>% 
+      summarise(statistic = ksTest(Price ~ Origin)$statistic,
+                "p-value" = ksTest(Price ~ Origin)$p.val)
+
+options(knitr.kable.NA = '') 
+kable(ks, format = "latex",  
+      caption = "Results of two samples Kolmogorov-Smirnov's test for prices",
+      digits = c(3, 3, 4, 2, 3), align = "rrrrr") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+```
+
+```{r asymp, results='asis'}
+asymp <- data2 %>% 
+         summarise(statistic = asymp.test(Price ~ Origin, parameter="mean")$statistic,
+                   "conf. int. lower" = asymp.test(Price ~ Origin, parameter="mean")$conf.int[1],
+                   "conf. int. upper" = asymp.test(Price ~ Origin, parameter="mean")$conf.int[2],
+                   "p-value" = asymp.test(Price ~ Origin, parameter="mean")$p.val)
+
+options(knitr.kable.NA = '') 
+kable(asymp, format = "latex",  
+      caption = "Results of asymptotic two sample test of means for prices",
+      digits = c(3, 3, 4, 2, 3), align = "rrrrr") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+```
+
+
+### Airbags analysis
+
+Finally we briefly analyzed contigency table for airbags vs origin which can be found in table \ref{tab:crosstab}. This table contains two groups according to origin of cars and three categories of airbags types. We wanted to know whether there is same distributions of airbags according to origin of cars. In other words we have analyzed homogeneity of contigency table. We have assumed that all observations are independent which was ensured by experiment setting and therefore we can test independence of groups vs categories which is equivalent to homogeneity of cross table. To perform test of independence we have used Chi squared test which turned out to be non-significant with p-value of 0.7864 (see table \ref{tab:chi2}).
+
+```{r crosstab, results='asis', message = FALSE}
+# generate cross-tab (contigency table) and include Pearson's chi sq. test to test independence of categorical variables Airbags and Origin
+crosstab <- data3 %>%
+             tbl_cross(row = AirBags, col = Origin, percent = "cell") %>%
+             as_kable_extra(caption = "Cross-table for AirBags vs Origin",
+                            digits = c(3, 3, 4, 2, 3, 4, 4, 4), align = "rrrrr") %>% 
+  kable_styling(position = "center", latex_options = "hold_position")
+
+crosstab
+```
+
+```{r chi2, results='asis'}
+# Chi sq. test of homogenity in groups
+chi2 <- data3 %>%
+        summarise(Df = 2,
+                  "chi2 statistic" = chisq.test(.$AirBags, .$Origin)$statistic,
+                  "p-value" = chisq.test(.$AirBags, .$Origin)$p.value)
+
+options(knitr.kable.NA = '') 
+kable(chi2, format = "latex",  
+      caption = "Results of Chi squared test of homogeneity of distribution of airbags according to origin of cars",
+      digits = c(3, 3, 4, 2, 3), align = "rrrrr") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+```
+
 # Conclusion
 
-According to performed ANOVA we can conclude that highway MPG significantly differs among groups of cars with three types of drive-train with p-value of 0.0005. Games-Howell's test then showed significant difference in highway MPG only between groups Rear and Front with p-value almost equal to zero. Also we can conclude that  cars with front drive-train  have lower fuel economy in highways in comparison to cars with rear drive-train.
+According to performed Welch's ANOVA we can conclude that highway MPG significantly differs among groups of cars with three types of drive-train with p-value of 0.001. Games-Howell's test then showed significant difference in highway MPG only between groups Rear and Front with p-value almost equal to zero. Similar finding was given by non-parametric Kruskal-Wallis test with p-value of 0.002. Dunn's test then revealed that there is also significant difference between groups Front and 4WD  with  p-value 0.012 in addition to Games-Howell's test. As the normality requirement was violated we consider Kruskal-Wallis and Dunn's test more trustworthy. Finally we can conclude that  cars with front drive-train have higher mean MPG or in other words lower fuel economy in highways in comparison to cars with rear and 4WD drive-train and therefore we can say that cars with front drive-train are more economical in highways. 
+
 ```{=latex}
 \begin{center}
 \begin{tabular}{ccc}
- Rear & 4WD & Front \\
- 26.31 & 25.82 & 30.24 
+ 4WD & Rear & Front \\
+25.82 & 26.31 & 30.24 
 \end{tabular}
 \end{center}
 ```
 ```{=latex}
 \hspace{6.5cm} \noindent\rule{2.1cm}{0.4pt} 
 
-\hspace{7.8cm} \noindent\rule{2.1cm}{0.4pt} 
-
-
 ```
+
+Analysis of prices of cars according to their origin was performed by test of means of prices with asymptotic test and test of distributions with Kolmogorov-Smirnov test. Both tests turned out to be non-significant with p-values of 0.340 for asymptotic test of means and 0.517 for Kolmogorov-Smirnov test. As we failed to reject both of this hypotheses we can only conclude that our data does contain no evidence to say whether prices of cars are same or not according to their origin. Finally, analysis of homogeneity of distribution of airbags according to origin of cars was performed using chi squared test which has given also non-significant results with p-value of 0.79 and we therefore fail to reject hypothesis about homogeneity of distribution of airbags on significance level of 0.05.
